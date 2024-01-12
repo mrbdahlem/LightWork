@@ -1,2 +1,2 @@
 # LightWork
-Wireless LED controler network
+Wireless RGB LED controler network
