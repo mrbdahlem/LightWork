@@ -1,5 +1,6 @@
 from machine import Pin
 import neopixel
+import lightwork
 
 led = Pin(2, Pin.OUT)
 
