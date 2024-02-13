@@ -2,11 +2,11 @@ from machine import Pin
 import neopixel
 import lightwork
 
-led = Pin(2, Pin.OUT)
+led = Pin(8, Pin.OUT)
 
-np = neopixel.NeoPixel(Pin(14), 36)
-SW1 = Pin(4, Pin.IN, Pin.PULL_UP)
-SW2 = Pin(5, Pin.IN, Pin.PULL_UP)
+np = neopixel.NeoPixel(Pin(3), 36)
+SW1 = Pin(6, Pin.IN, Pin.PULL_UP)
+SW2 = Pin(7, Pin.IN, Pin.PULL_UP)
 
 
 def set_color(color):
