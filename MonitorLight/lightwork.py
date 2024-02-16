@@ -4,7 +4,7 @@ import asyncio
 
 sta = network.WLAN(network.STA_IF)
 sta.active(True)
-sta.connect('FLights')
+sta.connect('Control407')
 sta.disconnect() # for esp8266
 
 print("Connected: " + str(sta.isconnected()))

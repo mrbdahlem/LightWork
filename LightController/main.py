@@ -5,7 +5,7 @@ import server
 # A WLAN interface must be active to send()/recv()
 ap = network.WLAN(network.AP_IF)  # Or network.AP_IF
 sta = network.WLAN(network.STA_IF)
-ap.config(ssid='FLights', hidden=True)
+ap.config(ssid='Control407', hidden=True)
 
 ap.active(True)
 sta.active(True)
