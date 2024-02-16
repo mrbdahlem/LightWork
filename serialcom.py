@@ -6,7 +6,7 @@ import select
 import settings
 import machine
 
-timeout = 1.0
+timeout = 5.0
 
 buffer = ''
 def readLine():
@@ -76,6 +76,8 @@ async def storeConfig():
                 config += data + "\n"
                 if data.endswith('}'):
                     break
+
+            await asyncio.sleep(.01)
         
         config = ujson.loads(config)
 
