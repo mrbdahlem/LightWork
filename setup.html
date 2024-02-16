@@ -10,16 +10,358 @@
             <h1>Setup</h1>
             <form>
                 <div class="mb-3">
-                    <label for="name" class="form-label">SSID</label>
+                    <label for="ssid" class="form-label">SSID</label>
                     <input type="text" class="form-control" id="ssid" name="ssid">
                 </div> 
                 <div class="mb-3">
-                    <label for="name" class="form-label">Password</label>
+                    <label for="pw" class="form-label">Password</label>
                     <input type="text" class="form-control" id="pw" name="pw">
                 </div> 
-
+                <div class="mb-3 p-3 container border border-secondary">
+                    <label for="devicetype" class="form-label">Device Type</label>
+                    <select class="form-select" id="devicetype" name="devicetype">
+                        <option value="light">MonitorLight</option>
+                        <option value="controller">LightController</option>
+                        <option value="remote">ControlPad</option>
+                    </select>                    
+                
+                    <div class="mt-3" id="lightoptions" style="display: block;">
+                        <div class="mb-3">
+                            <label for="lightnum" class="form-label">Light number</label>
+                            <input type="number" class="form-control" id="lightnum" name="lightnum">
+                        </div>
+                    </div>
+                    <div class="mt-3"  id="controlleroptions" style="display: none;">
+                    </div>
+                    <div class="mt-3"  id="remoteoptions" style="display: none;">
+                    </div>
+                </div>
                 <button type="submit" class="btn btn-primary">Save</button>
+                <button id="load" class="btn btn-secondary ml-3">Load</button>
+
+                <div class="mb-3">
+                    <div id="message" class="text-center"></div>
+                </div>
             </form>
         </div>
+
+        <script LANGUAGE="JavaScript">
+            // Filter to only display devices with the correct USB vendor and product ID
+            const filters = [
+                    { usbVendorId: 0x303A, usbProductId: 0x1001 }
+                ];
+
+            let port;
+            let messageBox = document.getElementById('message');
+
+            // when the device type is changed, show the correct options div
+            document.getElementById('devicetype').onchange = function() {
+                let type = document.getElementById('devicetype').value;
+                if (type == 'light') {
+                    document.getElementById('lightoptions').style.display = 'block';
+                    document.getElementById('controlleroptions').style.display = 'none';
+                    document.getElementById('remoteoptions').style.display = 'none';
+                }
+                else if (type == 'controller') {
+                    document.getElementById('lightoptions').style.display = 'none';
+                    document.getElementById('controlleroptions').style.display = 'block';
+                    document.getElementById('remoteoptions').style.display = 'none';
+                }
+                else if (type == 'remote') {
+                    document.getElementById('lightoptions').style.display = 'none';
+                    document.getElementById('controlleroptions').style.display = 'none';
+                    document.getElementById('remoteoptions').style.display = 'block';
+                }
+            }
+
+            document.forms[0].onsubmit = async function(e) {
+                e.preventDefault();
+
+                let config = {};
+
+                config.ssid = document.getElementById('ssid').value;
+                config.pw = document.getElementById('pw').value;
+                config.type = document.getElementById('devicetype').value;
+
+                if (config.type == 'light') {
+                    config.num = document.getElementById('lightnum').value;
+                }
+
+                let message;
+                
+                try {
+                    message = await sendConfig(config);
+                }
+                catch (e) {
+                    message = e;
+                }
+
+                let messageBox = document.getElementById('message');
+                if (message) {
+                    messageBox.innerText = 'Error saving config. ' + message;
+                    messageBox.classList.add('text-danger');
+                    messageBox.classList.remove('text-primary');
+                }
+                else {
+                    messageBox.innerText = 'Config saved';
+                    messageBox.classList.add('text-primary');
+                    messageBox.classList.remove('text-danger');
+                }
+            }
+
+           async function sendConfig(config) {
+                config = JSON.stringify(config);
+
+                // Check if the serial API is available and request a port
+                if (!port) {
+                    if ('serial' in navigator) {
+                        console.log('Serial available');
+                        let error;
+                        await navigator.serial.requestPort({filters}).then((p) => {
+                            port = p;
+                        })
+                        .catch((e) => {
+                            error = 'Error requesting port: ' + e;
+                        });
+
+                        if (error) {
+                            return error;
+                        }
+                    } else {
+                        return ('Serial not available');
+                    }
+                }
+
+                if (port) {
+                    await port.open({ baudRate: 115200 }).catch((e) => {
+                        return ('Error opening port: ' + e);
+                    });
+                }
+
+                if (port.readable && port.writable) {
+                    // Create a writer and encoder to send the config to the device
+                    const encoder = new TextEncoder();
+                    const writer = port.writable.getWriter();
+                    //const writableStreamClosed = encoder.readable.pipeTo(port.writable);
+
+                    // Create a reader to read the responses from the device
+                    const textDecoder = new TextDecoderStream();
+                    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+                    const reader = textDecoder.readable
+                        .pipeThrough(new TransformStream(new LineBreakTransformer()))
+                        .getReader();
+
+                    
+                    while (true) {
+                        // Send a newline to wake up the device
+                        let data = encoder.encode("\n");
+                        await writer.write(data);
+                                        
+                        let { value, done } = await readTimeout(reader, 1000);
+                        if (done) {
+                            return ('Error waking up device');
+                        }
+                        
+                        if (value == ">") {
+                            break;
+                        }
+                    }
+
+                    // Send the config command
+                    let data = encoder.encode("config\n");
+                    await writer.write(data);
+
+                    let { value, done } = await readTimeout(reader, 1000);
+                    if (done || value != "$") {
+                        return ('Error starting config mode');
+                    }
+
+                    // Send the config to the device
+                    data = encoder.encode(config + "\n");
+                    console.log('Sending config: ' + config);
+                    await writer.write(data);
+                    await writer.releaseLock();
+
+                    while (true) {
+                        let { value, done } = await readTimeout(reader, 1000);
+                        if (done) {
+                            return ('Error sending config');
+                        }
+                        
+                        if (value == "OK") {
+                            await reader.cancel();
+                            await readableStreamClosed.catch(() => {});
+                                                
+                            await port.close();
+                            return;
+                        }
+                        else if (value.length > 0) {
+                            return "error: " + value;
+                        }
+                    }
+                }
+                else {
+                    return ('Port not available');
+                }
+            }
+            
+            async function readTimeout(reader, timeout) {
+                let timer;
+
+                return Promise.race([
+                    reader.read(),
+                    new Promise((resolve, reject) => {
+                        timer = setTimeout(() => reject('Timeout reading from port.'), timeout);
+                    }).finally(() => {
+                        clearTimeout(timer)
+                    })
+                ]);
+            }
+
+            document.getElementById('load').onclick = async function(e) {
+                e.preventDefault();
+
+                let config = await getConfig();
+                if (config && typeof config == 'object') {
+                    document.getElementById('ssid').value = config.ssid;
+                    document.getElementById('pw').value = config.pw;
+                    document.getElementById('devicetype').value = config.type;
+                    document.getElementById('devicetype').onchange();
+                    if (config.type == 'light') {
+                        document.getElementById('lightnum').value = config.num;
+                    }
+
+                    messageBox.innerText = 'Config loaded';
+                    messageBox.classList.add('text-primary');
+                    messageBox.classList.remove('text-danger');
+                }
+                else {
+                    console.log(config);
+                    
+                    if (message) {
+                        messageBox.innerText = 'Error loading config. ' + message;
+                        messageBox.classList.add('text-danger');
+                        messageBox.classList.remove('text-primary');
+                    }
+                    else {
+                        
+                    }
+                }
+            }
+
+            async function getConfig() {
+                // Check if the serial API is available and request a port
+                if (!port) {
+                    if ('serial' in navigator) {
+                        console.log('Serial available');
+                        let error;
+                        await navigator.serial.requestPort({filters}).then((p) => {
+                            port = p;
+                        })
+                        .catch((e) => {
+                            error = 'Error requesting port: ' + e;
+                        });
+
+                        if (error) {
+                            return error;
+                        }
+                    } else {
+                        return ('Serial not available');
+                    }
+                }
+
+                if (port) {
+                    await port.open({ baudRate: 115200 }).catch((e) => {
+                        return ('Error opening port: ' + e);
+                    });
+                }
+
+                if (port.readable && port.writable) {
+                    // Create a writer and encoder to send the config to the device
+                    const encoder = new TextEncoder();
+                    const writer = port.writable.getWriter();
+                    //const writableStreamClosed = encoder.readable.pipeTo(port.writable);
+
+                    // Create a reader to read the responses from the device
+                    const textDecoder = new TextDecoderStream();
+                    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+                    const reader = textDecoder.readable
+                        .pipeThrough(new TransformStream(new LineBreakTransformer()))
+                        .getReader();
+
+                    
+                    while (true) {
+                        // Send a newline to wake up the device
+                        let data = encoder.encode("\n");
+                        await writer.write(data);
+                                        
+                        let { value, done } = await readTimeout(reader, 1000);
+                        if (done) {
+                            return ('Error waking up device');
+                        }
+                        
+                        if (value == ">") {
+                            break;
+                        }
+                    }
+
+                    // Send the load config command
+                    let data = encoder.encode("loadconfig\n");
+                    await writer.write(data);
+
+                    data = '';
+
+                    let { value, done } = await readTimeout(reader, 1000);
+                    if (done || value != "$") {
+                        return ('Error reading config');
+                    }
+
+                    // Read the config from the device
+                    while (true) {
+                        let { value, done } = await readTimeout(reader, 1000);
+                        if (done) {
+                            return ('Error reading config');
+                        }
+                        
+                        if (value != ">") {
+                            data += value;
+                        }
+                        else {
+                            writer.releaseLock();
+                            await reader.cancel();
+                            await readableStreamClosed.catch(() => {});
+                                                
+                            await port.close();
+                            return JSON.parse(data);
+                        }
+                    }
+                }
+                else {
+                    return ('Port not available');
+                }
+            }
+
+            class LineBreakTransformer {
+                constructor() {
+                    // A container for holding stream data until a new line.
+                    this.chunks = "";
+                }
+
+                transform(chunk, controller) {
+                    chunk = chunk.replace(/\r\n|\r/g, '\n');
+                    // Append new chunks to existing chunks.
+                    this.chunks += chunk;
+                    // For each line breaks in chunks, send the parsed lines out.
+                    const lines = this.chunks.split("\n");
+                    this.chunks = lines.pop();
+                    lines.forEach((line) => controller.enqueue(line));
+                }
+
+                flush(controller) {
+                    // When the stream is closed, flush any remaining chunks out.
+                    controller.enqueue(this.chunks);
+                }
+            }
+        </script>
     </body>
 </html>

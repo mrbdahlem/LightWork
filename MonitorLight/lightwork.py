@@ -2,6 +2,7 @@ import network
 import aioespnow
 import asyncio
 import hardware
+import settings
 
 # e = aioespnow.AIOESPNow()
 # e.active(True)
@@ -25,22 +26,24 @@ import hardware
 #         if msg == b'end':
 #             break
 
-async def run(config):
-    if not config.ssid:
+async def run():
+    ssid = settings.get('ssid')
+
+    if not ssid:
         print("SSID not configured. Please open setup.html in a web browser.")
         while True:
             pass
 
-    print("SSID configured as " + config.ssid)
+    print("SSID configured as " + ssid)
 
-    config.sta = network.WLAN(network.STA_IF)
-    config.sta.active(True)
-    config.sta.connect(config.ssid)
+    sta = network.WLAN(network.STA_IF)
+    sta.active(True)
+    sta.connect(ssid)
 
-    print("Connected: " + str(config.sta.isconnected()))
+    print("Connected: " + str(sta.isconnected()))
 
-    config.e = aioespnow.AIOESPNow()
-    config.e.active(True)
+    e = aioespnow.AIOESPNow()
+    e.active(True)
 
 
 
