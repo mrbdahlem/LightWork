@@ -45,5 +45,7 @@ async def run():
     e = aioespnow.AIOESPNow()
     e.active(True)
 
+    id = settings.get('num')
+
 
 

@@ -1,7 +1,6 @@
 import network
 import aioespnow
 import asyncio
-import server
 
 # A WLAN interface must be active to send()/recv()
 ap = network.WLAN(network.AP_IF)  # network.AP_IF also requires STA_IF to send/recv
@@ -16,4 +15,4 @@ print('Server mac:' + ap.config('mac').hex())
 
 e = espnow.ESPNow()
 e.active(True)
-server.serve()
+# server.serve()

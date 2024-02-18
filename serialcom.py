@@ -82,6 +82,7 @@ async def storeConfig():
         config = ujson.loads(config)
 
         settings.update(config)
+        settings.save()
 
         sys.stdout.write("OK\n")
     except:
